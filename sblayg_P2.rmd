@@ -1,0 +1,254 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+******
+# 1. Descripción del dataset
+******
+
+El conjunto de datos escogido para el desarrollo de esta práctica ha sido el que ofrece la plaforma Kaggle para su concurso titulado: [Titanic: Machine Learning from Disaster](https://www.kaggle.com/c/titanic/overview). Dicho dataset consiste en dos ficheros CSV, train y test, que contienen 12 y 11 columnas respectivamente. Cada registro representa a cada uno de los pasajeros que iban a bordo del Titanic de los cuales se nos indican las siguientes características:
+
+* PassengerId: identificador único del pasajero.
+* Survived: variable binaria que indica si el sujeto sobrevivió (1) o falleció (0). Dado que es el campo a estimar, este campo no está incluido en el test.
+* Pclass: clase en la que viajaba el pasajero (1, 2 o 3).
+* Name: nombre del pasajero.
+* Sex: sexo del pasajero (male o female).
+* Age: edad del pasajero.
+* SibSp: número de hermanos/as o esposos/as a bordo del Titanic.
+* Parch: número de padres o hijos/as a bordo del Titanic.
+* Ticket: número del ticket del pasajero.
+* Fare: tarifa pagada por el pasajero.
+* Cabin: número de camarote asignado.
+* Embarked: puerto en el que embarcó. C(Cherbourg), Q(Queenstown), S(Southampton).
+
+Este conjunto de datos se pretende utilizar para esclarecer cuáles son las características (si las hubiese), que proporcionasen una mayor probabilidad de supervivencia a los pasajeros, o por el contrario una mayor probabilidad de no sobrevivir.
+
+Carga de los datos:
+```{r message= FALSE, warning=FALSE}
+data<-read.csv("./train.csv",header=T,sep=",")
+data$Pclass <- factor(data$Pclass, levels=c(1,2,3), labels=c("1ª class", "2ª class", "3ª class"))
+data$Survived <- factor(data$Survived)
+levels(data$Survived)[levels(data$Survived)=="0"] <- "Dead"
+levels(data$Survived)[levels(data$Survived)=="1"] <- "Survived"
+```
+
+******
+# 2. Selección de los datos
+******
+
+De los atributos mencionados en el apartado anterior, se ha determinado que hay varios que son irrelevantes para la pregunta que se quiere resolver.
+
+* PassengetId: la identificación exacta del pasajero no es relevante.
+* Name: la identificación exacta del pasajero no es relevante.
+* Ticket: otra forma de identificar a los pasajeros, pero esta vez por grupos de individuos como familias que comparten el mismo número de ticket.
+* Embarked: de las tablas abajo expuestas podemos deducir que dependiendo del puerto de partida es más probable que se viaje en una clase u en otra. Por ejemplo, el 93% pasajeros que parten desde Queenstown viajan en tercera clase y el 51% que lo hace desde Cherbourg lo hace en primera clase. Si bien es cierto que partir desde un puerto más rico aumenta las probabilidades de supervivencia del pasajero, esto está supeditado directamente por la clase en la que viaja, por lo que entendemos que este atributo es irrelevante.
+
+
+```{r}
+tabla <- table(droplevels(data$Embarked, exclude = ""),data$Survived)
+prop.table(tabla, margin = 1)
+
+tabla <- table(droplevels(data$Embarked, exclude = ""),data$Pclass)
+prop.table(tabla, margin = 1)
+```
+
+* Fare: de la misma forma que el puerto de embarque, el precio pagado por el billete está supeditado con la clase en la que se viaja. Por lo que podemos considerar este atributo como irrelevante.
+
+```{r}
+data$Fare <- factor(cut(data$Fare, quantile(data$Fare), include.lowest = TRUE), labels = c("Low","Low/Mid","Mid/High","High"))
+
+tabla <- table(data$Fare,data$Survived)
+prop.table(tabla, margin = 1)
+
+tabla <- table(data$Fare,data$Pclass)
+prop.table(tabla, margin = 1)
+```
+
+* SibSp: poco significativo para lo que se quiere responder.
+* Parch: poco significativo para lo que se quiere responder.
+* Cabin: más del 77% de los registros tienen este campo vacío, es difícil obtener utilidad de él.
+```{r message= FALSE, warning=FALSE}
+(nrow(data[data$Cabin == "",]) / nrow(data))*100
+```
+
+
+Se elimininan los atributos mencionados.
+```{r message= FALSE, warning=FALSE}
+data$PassengerId <- NULL
+data$Name <- NULL
+data$Ticket <- NULL
+data$Embarked <- NULL
+data$Fare <- NULL
+data$SibSp <- NULL
+data$Parch <- NULL
+data$Cabin <- NULL
+```
+
+******
+# 3. Limpieza de los datos
+******
+
+## 3.1 Valores perdidos
+
+Antes de nada, lo primero será obtener un breve resumen estadístico del conjunto de datos.
+
+```{r message= FALSE, warning=FALSE}
+summary(data)
+```
+
+En lo que se refiere a valores perdidos, se observa que el único campo que los contiene es el de la Edad (age). Para recuperar estos valores se utilizará la función kNN (k vecinos más próximos) del paquete VIM para estimar la edad en función de registros con características similares del que se queire estimar.
+
+```{r message= FALSE, warning=FALSE}
+library("VIM")
+knnData<-kNN(data, k=3)
+data$Age <- knnData$Age
+summary(data)
+```
+
+## 3.2 Valores extremos
+
+Los valores extremos, valores atípicos u outliers, son aquellas observaciones que destacan sobre las demás debido a que se desvían demasiado del centro pudiendo alterar los resultados que se quieran obtener, por ello deberían ser tratados. En este apartado vamos a utilizar un diagrama de cajas para estudiar los outliers que pudiesen existir en el atributo edad.
+
+```{r message= FALSE, warning=FALSE}
+bp <- boxplot(data$Age)
+bp$out
+```
+
+Podemos observar en el gráfico que existen una serie de valores entre los 60 y 80 años que se desvían del centro de los datos. Sin embargo, no los consideraremos como outliers, simplemente consideraremos que entre los pasajeros hay un reducido número de gente mayor. Vamos a dividir este conjunto en tres grupos: child (edad inferior a 18), adult (edad igual o superior a 18 y menor de 60) y elder (más de 60 años) de cara a realizar futuros gráficos siguiendo esta agrupación
+
+```{r message= FALSE, warning=FALSE}
+ages <- cut(data$Age, breaks=c(-Inf, 18, 60,Inf), labels=c("child","adult", "elder"))
+table(ages)
+```
+
+******
+# 4. Análisis de los datos
+******
+
+## 4.1 Selección de los grupos de datos que se quieren analizar/comparar
+
+Llegados a este punto, el dataset contiene tres columnas que consideramos de interés para la resolución del problema planteado al inicio: clase, sexo y edad. Además estas, tenemos la el atributo target "Survived" que agrupa los pasajeros en fallecido o superviviente. En un primer lugar, veremos la relación que tiene el target (Survived) con el resto de atributos mediante gráficos de barras apiladas.
+
+## 4.2. Comprobación de la normalidad y homogeneidad de la varianza.
+
+En este apartado, vamos a comprobar la normalidad de los atributos de los que disponemos utilizando el test de Anderson-Darling existente en el paquete "nortest". Debido a la naturaleza de los atributos Survived, Pclass y Sex, ya sabemos que no van a seguir una distribución normal, únicamente faltaría por comprobar Age.
+
+```{r}
+library(nortest)
+cols <- c("Survived", "Pclass", "Age", "Sex")
+a <- 0.05
+
+for(col in cols){
+    pvalue <- ad.test(as.numeric(data[,col]))$p.value
+    if(pvalue < a){
+      print(paste(col, "no cumple el test de normalidad"))
+    } else{
+      print(paste(col, "cumple el test de normalidad"))
+    }
+}
+```
+
+Al no superar el nivel de significancia de 0.05, se rechaza la hipótesis nula concluyendo que el atributo Age no sigue una distribución normal.
+
+Ahora vamos a analizar la homogeneidad de las varianzas mediante la prueba de Prueba Brown-Forsythe para los campos "Survived" y "Pclass"
+```{r}
+library(onewaytests)
+data2 = data.frame(Survived = data$Survived, Pclass =  data$Pclass)
+data2$Survived <- as.numeric(data2$Survived)
+bf.test(Survived ~ Pclass, data = data2)
+```
+
+Dado que este test tampoco supera el nivel de significación de 0.05 concluímos que no posee la propiedad de homocedasticidad, y que el atributo Pclass presenta varianzas estadísticamente diferentes 
+
+#4.3 Aplicación de pruebas estadísticas para comparar los grupos de datos
+
+En primer lugar vamos a ver de forma gráfica la distribución de cada atributo, por si se pudiese obtener alguna primera conclusión:
+
+Supervivencia según la clase:
+```{r}
+library(ggplot2)
+ggplot(data,aes(data$Pclass,fill=data$Survived))+geom_bar() +labs(y="Pasajeros")+ guides(fill=guide_legend(title=""))+ scale_fill_manual(values=c("black","#24B7D7"))+ggtitle("Supervivientes según la clase")
+
+tabla <- table(data$Pclass,data$Survived)
+prop.table(tabla, margin = 1)
+
+table(data$Survived,data$Pclass)
+```
+
+Como podemos observar en el gráfico y en la tabla, los pasajeros de tercera clase fallecieron en más de un 75% de los casos siendo esta clase donde se concentra la mayoría de los fallecidos: 372 fallecidos de un total de 549 (más del 67%). Los casos de supervivencia se elevan en segunda clase con respecto a la tercera, quedando unos resultados más parejos (52.71% fallecidos y 47.28% vivos), y se elevan aún más en primera clase, siendo la única clase que tiene más supervivientes que fallecidos.
+
+Supervivencia según el sexo:
+```{r}
+ggplot(data,aes(Sex,fill=data$Survived))+geom_bar() +labs(y="Pasajeros")+ guides(fill=guide_legend(title=""))+ scale_fill_manual(values=c("black","#24B7D7"))+ggtitle("Supervivientes según el sexo")
+
+tabla <- table(data$Sex,data$Survived)
+prop.table(tabla, margin = 1)
+```
+
+De este gráfico y tabla podemos conjeturar que según el sexo, las mujeres poseían una probabilidad de sobrevivir (74.2%) muy superior que los hombres (18.89%). Si a esto añadimos que había un mayor número de hombres, podemos ver que el grueso del número de fallecidos según sexo se encuentra en ellos.
+
+Supervivencia según la edad:
+```{r}
+ggplot(data,aes(ages,fill=data$Survived))+geom_bar() +labs(y="Pasajeros")+ guides(fill=guide_legend(title=""))+ scale_fill_manual(values=c("black","#24B7D7"))+ggtitle("Supervivientes según la edad")
+
+tabla <- table(ages,data$Survived)
+prop.table(tabla, margin = 1)
+```
+
+Mientras que un poco más de la mitad de los niños (51.06%) ha sobrevivido, apenas un 36% de los adultos lo ha hecho y un 22% de los más mayores.
+
+### 4.3.1 Correlación
+
+Tras lo visto hasta ahora, se podría decir que ser de primera clase, mujer y/o niño debería influir de manera significativa en los resultados. Veamos ahora la correlación existente entre cada uno de los atributos con el target:
+```{r}
+cor.test(x=as.numeric(data$Survived), y=as.numeric(data$Pclass))
+cor.test(x=as.numeric(data$Survived), y=as.numeric(data$Age))
+cor.test(x=as.numeric(data$Survived), y=as.numeric(data$Sex))
+```
+
+Como se muestra arriba, el coeficiente de correlación que más se acerca a 1 o -1 es el atributo Sex con un -0.54, siendo este el que tiene una mayor correlación (inversa en este caso) con el target del dataset.
+
+
+### 4.3.2 Modelo de árbol de decisión
+
+En este apartado vamos a crear un modelo de árbol de decisión para obtener una serie de reglas con las que sea posible deducir los valores del atributo "Survived" del conjunto test de los datos.
+
+Creamos el modelo utilizando la división en rangos que creamos anteriormente para la edad:
+```{r}
+data2 <- data
+data2$Age <- ages
+
+target <- data2[,1] 
+attr <- data2[,2:4]
+
+model <- C50::C5.0(attr, target,rules=TRUE )
+summary(model)
+```
+Según las reglas obtenidas, se confirma lo que ya vimos en el apartado de correlaciones. El atributo con mayor incidencia sobre la supervivencia es el sexo, seguido de la clase y por último la edad. Además, de estas reglas podemos destacar lo siguiente:
+
+* Ser hombre implicaba morir con una validez del 81%.
+* Ser de 3ª implicaba morir con una validez del 75.7%.
+* Ser mujer implicaba vivir con una validez del 94.2%.
+* Ser mujer adulta o mayor implicaba sobrevivir con una validez del 81.2%.
+
+Estas reglas han obtenido una tasa de éxito en la evaluación del modelo del 80.5%.
+
+******
+# 5. Representación de los resultados a partir de tablas y gráficas
+******
+
+
+******
+# 6. Resolución del problema
+******
+
+Como conclusión sobre el trabajo realizado en esta memoria, podemos decir que se puede resolver la pregunta planteada inicialmente: 
+
+* "esclarecer cuáles son las características (si las hubiese), que proporcionasen una mayor probabilidad de supervivencia a los pasajeros, o por el contrario una mayor probabilidad de no sobrevivir"
+
+Como hemos visto, el atributo más determinante a la hora de sobrevivir es el sexo. Siendo mujer las probabilidades de sobrevivir son notablemente altas mientras que siendo hombre todo lo contrario.
+
+El segundo factor más influyente es la clase en la que se viaja. Ser de 3ª clase implicaba terminar en el grupo de no supervivientes con bastante probabilidad, probabilidad que aumenta según sea mayor la clase.
+
+Por último, el factor menos determinante de lo estudiados es la edad, que solo tiene relevancia en niños (aumentando su probabilidad de sobrevivir).

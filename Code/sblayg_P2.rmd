@@ -3,9 +3,6 @@ title: 'Tipología y ciclo de vida de los datos: práctica 2'
 author: "Autor: Sergio Blay González"
 date: "Enero 2020"
 output:
-  pdf_document:
-    highlight: zenburn
-    toc: yes
   word_document: default
   html_document:
     highlight: default
@@ -13,6 +10,9 @@ output:
     theme: cosmo
     toc: yes
     toc_depth: 2
+  pdf_document:
+    highlight: zenburn
+    toc: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -133,6 +133,7 @@ summary(data)
 En lo que se refiere a valores perdidos, se observa que el único campo que los contiene es el de la Edad (age). Para recuperar estos valores se utilizará la función kNN (k vecinos más próximos) del paquete VIM para estimar la edad en función de registros con características similares del que se queire estimar.
 
 ```{r message= FALSE, warning=FALSE}
+library("VIM")
 knnData<-kNN(data, k=3)
 data$Age <- knnData$Age
 summary(data)

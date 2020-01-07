@@ -1,8 +1,25 @@
 ---
+title: 'Tipología y ciclo de vida de los datos: práctica 2'
+author: "Autor: Sergio Blay González"
+date: "Enero 2020"
 output:
-  pdf_document: default
-  html_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+  word_document: default
+  html_document:
+    highlight: default
+    number_sections: no
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval=T, echo=T)
+```
+
+
 ******
 # 1. Descripción del dataset
 ******
@@ -31,6 +48,7 @@ data$Pclass <- factor(data$Pclass, levels=c(1,2,3), labels=c("1ª class", "2ª c
 data$Survived <- factor(data$Survived)
 levels(data$Survived)[levels(data$Survived)=="0"] <- "Dead"
 levels(data$Survived)[levels(data$Survived)=="1"] <- "Survived"
+summary(data)
 ```
 
 ******
@@ -40,48 +58,63 @@ levels(data$Survived)[levels(data$Survived)=="1"] <- "Survived"
 De los atributos mencionados en el apartado anterior, se ha determinado que hay varios que son irrelevantes para la pregunta que se quiere resolver.
 
 * PassengetId: la identificación exacta del pasajero no es relevante.
-* Name: la identificación exacta del pasajero no es relevante.
-* Ticket: otra forma de identificar a los pasajeros, pero esta vez por grupos de individuos como familias que comparten el mismo número de ticket.
-* Embarked: de las tablas abajo expuestas podemos deducir que dependiendo del puerto de partida es más probable que se viaje en una clase u en otra. Por ejemplo, el 93% pasajeros que parten desde Queenstown viajan en tercera clase y el 51% que lo hace desde Cherbourg lo hace en primera clase. Si bien es cierto que partir desde un puerto más rico aumenta las probabilidades de supervivencia del pasajero, esto está supeditado directamente por la clase en la que viaja, por lo que entendemos que este atributo es irrelevante.
-
-
 ```{r}
-tabla <- table(droplevels(data$Embarked, exclude = ""),data$Survived)
-prop.table(tabla, margin = 1)
+data$PassengerId <- NULL
+```
 
+* Name: la identificación exacta del pasajero no es relevante.
+```{r}
+data$Name <- NULL
+```
+
+* Ticket: otra forma de identificar a los pasajeros, pero esta vez por grupos de individuos como familias que comparten el mismo número de ticket.
+```{r}
+data$Ticket <- NULL
+```
+
+* Embarked: se podría pensar que el puerto de embarque podría estar relacionado con la clase en la que se viaja, ya que partir desde el puerto de una ciudad más rica podría ser indicativo de una mayor riqueza. Estudiemos la posible correlación entre estas dos variables.
+
+En primer lugar vamos a tratar sus valores perdidos, como hemos observado en el resumen anteriormente mostrado, existen dos registros sin puerto de embarque. Para paliar esto, vamos a asignarles a los registros un puerto basado en el puerto más común de entre los registros con características similares a ellos.
+```{r}
+data[data$Embarked == "",]
+similar <- data[data$Survived == "Survived" & data$Pclass == "1ª class" & data$Sex == "female" & data$SibSp == 0 & data$Parch == 0,]
+table(similar$Embarked)
+data$Embarked[data$Embarked == ""] <- "C"
+```
+
+A continuación, vamos a ver unas tablas de frecuencia para tener una primera idea acerca de si vamos encaminados o no en nuestra suposición
+```{r}
 tabla <- table(droplevels(data$Embarked, exclude = ""),data$Pclass)
 prop.table(tabla, margin = 1)
 ```
 
-* Fare: de la misma forma que el puerto de embarque, el precio pagado por el billete está supeditado con la clase en la que se viaja. Por lo que podemos considerar este atributo como irrelevante.
+Podemos observar en la tabla, que partiendo desde Queenstown es muy probable que el pasajero sea de 3ª clase, mientras que más de la mitad de los pasajeros de Cherbourg (51.11%) lo hacen en primera. Vamos a realizar un test de dependencia para verificarlo.
+
+```{r}
+data$Embarked <- droplevels(data$Embarked)
+tbl = table(data$Pclass, data$Pclass)
+chisq.test(tbl)
+data$Embarked <- NULL
+```
+Puesto que el pvalue es menor del nivel de significancia de 0.05, rechazamos la hipótesis nula de independencia. Por lo tanto, ambas variables tienen una relación de dependencia y vamos a eliminar la columna Embarked.
+
+* Fare: de la misma forma que el puerto de embarque, podríamos pensar que el precio del billete está supeditado a la clase en la que se viaja, ya que los precios son mayores en las clases más altas.
 
 ```{r}
 data$Fare <- factor(cut(data$Fare, quantile(data$Fare), include.lowest = TRUE), labels = c("Low","Low/Mid","Mid/High","High"))
 
-tabla <- table(data$Fare,data$Survived)
-prop.table(tabla, margin = 1)
-
 tabla <- table(data$Fare,data$Pclass)
 prop.table(tabla, margin = 1)
-```
 
-* SibSp: poco significativo para lo que se quiere responder.
-* Parch: poco significativo para lo que se quiere responder.
+tbl = table(data$Fare, data$Pclass)
+chisq.test(tbl)
+data$Fare <- NULL
+```
+En la tabla se puede observar que los que han pagado un precio Alto, viajan en un 71% de los casos es primera clase, mientras que en su lado opuesto haber pagado el precio Low lleva a los pasajeros a viajar en 3ª clase en un 94% de los casos. Este hecho se confirma en el test realizado, al tener un p-value menor que el nivel de significación. Por lo tanto vamos a eliminar esta columna también.
+
 * Cabin: más del 77% de los registros tienen este campo vacío, es difícil obtener utilidad de él.
 ```{r message= FALSE, warning=FALSE}
 (nrow(data[data$Cabin == "",]) / nrow(data))*100
-```
-
-
-Se elimininan los atributos mencionados.
-```{r message= FALSE, warning=FALSE}
-data$PassengerId <- NULL
-data$Name <- NULL
-data$Ticket <- NULL
-data$Embarked <- NULL
-data$Fare <- NULL
-data$SibSp <- NULL
-data$Parch <- NULL
 data$Cabin <- NULL
 ```
 
@@ -91,7 +124,7 @@ data$Cabin <- NULL
 
 ## 3.1 Valores perdidos
 
-Antes de nada, lo primero será obtener un breve resumen estadístico del conjunto de datos.
+Antes de nada, lo primero será obtener un breve resumen estadístico del conjunto de datos resultante del apartado anterior.
 
 ```{r message= FALSE, warning=FALSE}
 summary(data)
@@ -106,21 +139,23 @@ data$Age <- knnData$Age
 summary(data)
 ```
 
+En algunos casos, el valor 0 también puede significar un valor perdido. Sim embargo, dado que en las columnas numéricas de este dataset el valor 0 entra dentro del domino, para este caso no se condirera que sea un valor perdido.
+
 ## 3.2 Valores extremos
 
-Los valores extremos, valores atípicos u outliers, son aquellas observaciones que destacan sobre las demás debido a que se desvían demasiado del centro pudiendo alterar los resultados que se quieran obtener, por ello deberían ser tratados. En este apartado vamos a utilizar un diagrama de cajas para estudiar los outliers que pudiesen existir en el atributo edad.
+Los valores extremos, valores atípicos u outliers, son aquellas observaciones que destacan sobre las demás debido a que se desvían demasiado del centro pudiendo alterar los resultados que se quieran obtener, por ello deberían ser tratados. En este apartado vamos a utilizar un diagrama de cajas para estudiar los outliers que pudiesen existir en los atributos numéricos Age, SibSp y Parch.
 
 ```{r message= FALSE, warning=FALSE}
-bp <- boxplot(data$Age)
-bp$out
+bpAge <- boxplot(data$Age)
+title("Boxplot edad")
+bpSibSp <- boxplot(data$SibSp)
+title("Boxplot SibSp")
+bpParch <- boxplot(data$Parch)
+title("Boxplot Parch")
 ```
 
-Podemos observar en el gráfico que existen una serie de valores entre los 60 y 80 años que se desvían del centro de los datos. Sin embargo, no los consideraremos como outliers, simplemente consideraremos que entre los pasajeros hay un reducido número de gente mayor. Vamos a dividir este conjunto en tres grupos: child (edad inferior a 18), adult (edad igual o superior a 18 y menor de 60) y elder (más de 60 años) de cara a realizar futuros gráficos siguiendo esta agrupación
+Podemos observar en el gráfico que existen una serie de valores entre los 60 y 80 años que se desvían del centro de los datos. Sin embargo, no los consideraremos como outliers, simplemente consideraremos que entre los pasajeros hay un reducido número de gente mayor. Para los casos de SibSp y Parch ocurre exactamente lo mismo, lo más usual es que no se viaje con otros familiares, sin embargo puede darse el caso de pasajeros con hasta 6-8 familiares a bordo.
 
-```{r message= FALSE, warning=FALSE}
-ages <- cut(data$Age, breaks=c(-Inf, 18, 60,Inf), labels=c("child","adult", "elder"))
-table(ages)
-```
 
 ******
 # 4. Análisis de los datos
@@ -128,15 +163,15 @@ table(ages)
 
 ## 4.1 Selección de los grupos de datos que se quieren analizar/comparar
 
-Llegados a este punto, el dataset contiene tres columnas que consideramos de interés para la resolución del problema planteado al inicio: clase, sexo y edad. Además estas, tenemos la el atributo target "Survived" que agrupa los pasajeros en fallecido o superviviente. En un primer lugar, veremos la relación que tiene el target (Survived) con el resto de atributos mediante gráficos de barras apiladas.
+En este punto, y dado el objetivo de la práctica, vamos a realizar el análisis de homogeneidad de la varianza para el atributo edad teniendo en cuenta los grupos en los que se didive el atributo objetivo: vivo o fallecido.
 
 ## 4.2. Comprobación de la normalidad y homogeneidad de la varianza.
 
-En este apartado, vamos a comprobar la normalidad de los atributos de los que disponemos utilizando el test de Anderson-Darling existente en el paquete "nortest". Debido a la naturaleza de los atributos Survived, Pclass y Sex, ya sabemos que no van a seguir una distribución normal, únicamente faltaría por comprobar Age.
+En este apartado, vamos a comprobar la normalidad de los atributos de los que disponemos utilizando el test de Anderson-Darling existente en el paquete "nortest".
 
 ```{r}
 library(nortest)
-cols <- c("Survived", "Pclass", "Age", "Sex")
+cols <- c("Pclass", "Age", "Sex", "SibSp", "Parch")
 a <- 0.05
 
 for(col in cols){
@@ -149,21 +184,26 @@ for(col in cols){
 }
 ```
 
-Al no superar el nivel de significancia de 0.05, se rechaza la hipótesis nula concluyendo que el atributo Age no sigue una distribución normal.
 
-Ahora vamos a analizar la homogeneidad de las varianzas mediante la prueba de Prueba Brown-Forsythe para los campos "Survived" y "Pclass"
+Ahora vamos a analizar la homogeneidad de las varianzas mediante la prueba de Fligner-Killeen para los campos "Survived" y "Age"
 ```{r}
-library(onewaytests)
-data2 = data.frame(Survived = data$Survived, Pclass =  data$Pclass)
-data2$Survived <- as.numeric(data2$Survived)
-bf.test(Survived ~ Pclass, data = data2)
+fligner.test(as.numeric(Survived) ~ Age, data = data)
 ```
 
-Dado que este test tampoco supera el nivel de significación de 0.05 concluímos que no posee la propiedad de homocedasticidad, y que el atributo Pclass presenta varianzas estadísticamente diferentes 
+Dado que este test tampoco supera el nivel de significación de 0.05 rechazamos la hipótesis de que las varianzas de ambas muestras son homogéneas.
+
 
 #4.3 Aplicación de pruebas estadísticas para comparar los grupos de datos
 
 En primer lugar vamos a ver de forma gráfica la distribución de cada atributo, por si se pudiese obtener alguna primera conclusión:
+
+Supervivientes:
+
+```{r}
+library(ggplot2)
+plot(x = data$Survived, main = "Survived", ylab = "Frecuencia", 
+     col = c("grey", "#24B7D7"))
+```
 
 Supervivencia según la clase:
 ```{r}
@@ -190,6 +230,7 @@ De este gráfico y tabla podemos conjeturar que según el sexo, las mujeres pose
 
 Supervivencia según la edad:
 ```{r}
+ages <- cut(data$Age, breaks=c(-Inf, 18, 60,Inf), labels=c("child","adult", "elder"))
 ggplot(data,aes(ages,fill=data$Survived))+geom_bar() +labs(y="Pasajeros")+ guides(fill=guide_legend(title=""))+ scale_fill_manual(values=c("black","#24B7D7"))+ggtitle("Supervivientes según la edad")
 
 tabla <- table(ages,data$Survived)
@@ -198,46 +239,71 @@ prop.table(tabla, margin = 1)
 
 Mientras que un poco más de la mitad de los niños (51.06%) ha sobrevivido, apenas un 36% de los adultos lo ha hecho y un 22% de los más mayores.
 
-### 4.3.1 Correlación
-
-Tras lo visto hasta ahora, se podría decir que ser de primera clase, mujer y/o niño debería influir de manera significativa en los resultados. Veamos ahora la correlación existente entre cada uno de los atributos con el target:
+Supervivencia según SibSp:
 ```{r}
-cor.test(x=as.numeric(data$Survived), y=as.numeric(data$Pclass))
-cor.test(x=as.numeric(data$Survived), y=as.numeric(data$Age))
-cor.test(x=as.numeric(data$Survived), y=as.numeric(data$Sex))
+ggplot(data,aes(SibSp,fill=data$Survived))+geom_bar() +labs(y="Pasajeros")+ guides(fill=guide_legend(title=""))+ scale_fill_manual(values=c("black","#24B7D7"))+ggtitle("Supervivientes según SibSp")
+
+tabla <- table(data$SibSp,data$Survived)
+prop.table(tabla, margin = 1)
 ```
 
-Como se muestra arriba, el coeficiente de correlación que más se acerca a 1 o -1 es el atributo Sex con un -0.54, siendo este el que tiene una mayor correlación (inversa en este caso) con el target del dataset.
-
-
-### 4.3.2 Modelo de árbol de decisión
-
-En este apartado vamos a crear un modelo de árbol de decisión para obtener una serie de reglas con las que sea posible deducir los valores del atributo "Survived" del conjunto test de los datos.
-
-Creamos el modelo utilizando la división en rangos que creamos anteriormente para la edad:
+Supervivencia según Parch:
 ```{r}
-data2 <- data
-data2$Age <- ages
+ggplot(data,aes(Parch,fill=data$Survived))+geom_bar() +labs(y="Pasajeros")+ guides(fill=guide_legend(title=""))+ scale_fill_manual(values=c("black","#24B7D7"))+ggtitle("Supervivientes según Parch")
 
-target <- data2[,1] 
-attr <- data2[,2:4]
+tabla <- table(data$Parch,data$Survived)
+prop.table(tabla, margin = 1)
+```
+
+En cuanto a SibSp y Parch, podemos observar que tiene unos números muy parecidos, siendo el valor 1 el único cuya frecuencia a la hora de sobrevivir es mayor de la mitad.
+
+Vistos estos gráficos de barras hemos podido obtener una serie de hipótesis que deberíamos contrastar antes de poder confirmarlas.
+
+
+### 4.3.1 Modelo de árbol de decisión
+
+En este apartado vamos a crear un modelo de árbol de decisión para obtener una serie de reglas con las que sea posible deducir los valores del atributo "Survived" del conjunto de prueba de los datos.
+
+```{r}
+target <- data[,1] 
+attr <- data[,2:6]
 
 model <- C50::C5.0(attr, target,rules=TRUE )
 summary(model)
 ```
-Según las reglas obtenidas, se confirma lo que ya vimos en el apartado de correlaciones. El atributo con mayor incidencia sobre la supervivencia es el sexo, seguido de la clase y por último la edad. Además, de estas reglas podemos destacar lo siguiente:
+Según las reglas obtenidas, se confirma lo que ya observamos a lo largo de la memoria. El atributo con mayor incidencia sobre la supervivencia es el sexo, seguido de la edad. Además, de entre las reglas obtenidas podemos observar que la mayor probabilidad (92.3% de los casos) de sobrevivir al incidente se daba en los niños con dos o menos hermanos. Por el contrario, en un 98.9% de los casos de pasajeros de tercera clase entre los 33 y 38 años sin hermanos o esposo/a a bordo, el pasajero fallecía.
 
-* Ser hombre implicaba morir con una validez del 81%.
-* Ser de 3ª implicaba morir con una validez del 75.7%.
-* Ser mujer implicaba vivir con una validez del 94.2%.
-* Ser mujer adulta o mayor implicaba sobrevivir con una validez del 81.2%.
-
-Estas reglas han obtenido una tasa de éxito en la evaluación del modelo del 80.5%.
+Estas reglas han obtenido una tasa de error en la evaluación del modelo del 13.6%.
 
 ******
 # 5. Representación de los resultados a partir de tablas y gráficas
 ******
 
+En este apartado vamos a utilizar el modelo obtenido en el apartado anterior para contrastarlo con el conjunto de prueba.
+
+```{r}
+dataTest<-read.csv("./test.csv",header=T,sep=",")
+dataTest$Name <- NULL
+dataTest$Ticket <- NULL
+dataTest$Fare <- NULL
+dataTest$Cabin <- NULL
+dataTest$Embarked <- NULL
+dataTest$Pclass <- factor(dataTest$Pclass, levels=c(1,2,3), labels=c("1ª class", "2ª class", "3ª class"))
+results<-read.csv("./results.csv",header=T,sep=",")
+results$PassengerId <- NULL
+
+survived_pr <- results[,1] 
+attr2 <- dataTest[,2:6]
+predicted_model <- predict(model, attr2, type="class")
+
+mat_conf<-table(survived_pr,Predicted=predicted_model)
+mat_conf
+
+porcentaje_correct<-100 * sum(diag(mat_conf)) / sum(mat_conf)
+print(sprintf("El %% de registros correctamente clasificados es: %.4f %%",porcentaje_correct))
+```
+
+Con un 92.10% de registros clasificados correctamente, la calidad del modelo es bastante alta.
 
 ******
 # 6. Resolución del problema
@@ -247,8 +313,4 @@ Como conclusión sobre el trabajo realizado en esta memoria, podemos decir que s
 
 * "esclarecer cuáles son las características (si las hubiese), que proporcionasen una mayor probabilidad de supervivencia a los pasajeros, o por el contrario una mayor probabilidad de no sobrevivir"
 
-Como hemos visto, el atributo más determinante a la hora de sobrevivir es el sexo. Siendo mujer las probabilidades de sobrevivir son notablemente altas mientras que siendo hombre todo lo contrario.
-
-El segundo factor más influyente es la clase en la que se viaja. Ser de 3ª clase implicaba terminar en el grupo de no supervivientes con bastante probabilidad, probabilidad que aumenta según sea mayor la clase.
-
-Por último, el factor menos determinante de lo estudiados es la edad, que solo tiene relevancia en niños (aumentando su probabilidad de sobrevivir).
+El modelo, así como los análisis previos nos han otorgado un gran conocimiento sobre los datos y las preguntas planteadas en el primer apartado, que nos han permitido generar un modelo de clasificación con un buen porcentaje de aciertos.

@@ -155,6 +155,9 @@ title("Boxplot Parch")
 
 Podemos observar en el gráfico que existen una serie de valores entre los 60 y 80 años que se desvían del centro de los datos. Sin embargo, no los consideraremos como outliers, simplemente consideraremos que entre los pasajeros hay un reducido número de gente mayor. Para los casos de SibSp y Parch ocurre exactamente lo mismo, lo más usual es que no se viaje con otros familiares, sin embargo puede darse el caso de pasajeros con hasta 6-8 familiares a bordo.
 
+```{r}
+write.csv(data, "Data/datos_tratados.csv")
+```
 
 ******
 # 4. Análisis de los datos
